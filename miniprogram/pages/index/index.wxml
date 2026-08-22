@@ -1,0 +1,41 @@
+<view class="page">
+  <view wx:if="{{loading}}" class="loading"><view class="spinner"></view><text>正在安全登录…</text></view>
+  <block wx:else>
+    <view class="hero">
+      <view class="brand">XW</view>
+      <view><text class="title">鑫威单据快速上传</text><text class="subtitle">拍照后自动按日期归档并通知管理员</text></view>
+    </view>
+
+    <view wx:if="{{!type}}" class="content">
+      <text class="section-title">请选择单据类型</text>
+      <text class="hint">无需录入产品，只需把整张单据拍清楚</text>
+      <view class="type-card delivery" data-type="delivery_note" bindtap="selectType">
+        <text class="type-icon">↓</text><view><text class="type-title">送货单</text><text class="type-help">供应商送来的货物凭证</text></view>
+      </view>
+      <view class="type-card outbound" data-type="outbound_note" bindtap="selectType">
+        <text class="type-icon">↑</text><view><text class="type-title">出库单</text><text class="type-help">仓库发出的货物凭证</text></view>
+      </view>
+
+      <view wx:if="{{recent.length}}" class="recent">
+        <text class="recent-title">最近上传</text>
+        <view wx:for="{{recent}}" wx:key="id" class="recent-row">
+          <view><text class="recent-name">{{item.document_kind === 'delivery_note' ? '送货单' : '出库单'}} · {{item.document_date}}</text><text class="recent-file">{{item.original_file_name}}</text></view>
+          <text class="status">{{item.status === 'uploaded' ? '待查看' : item.status === 'reviewed' ? '已查看' : '已归档'}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:else class="form-card">
+      <view class="form-head"><view><text class="form-label">当前类型</text><text class="form-title">{{type === 'delivery_note' ? '送货单' : '出库单'}}</text></view><button class="back" bindtap="goBack">返回</button></view>
+      <text class="field-label">单据日期</text><picker mode="date" value="{{date}}" bindchange="changeDate"><view class="field">{{date}}</view></picker>
+      <text class="field-label">往来单位（可选）</text>
+      <view class="field input-shell">
+        <input class="native-input" type="text" always-embed="{{true}}" placeholder="供应商或客户名称" placeholder-style="color:#94a3b8" cursor-color="#2563eb" confirm-type="done" bindblur="changePartner" bindconfirm="changePartner" />
+      </view>
+      <text class="field-label">备注（可选）</text><textarea class="textarea text-input" placeholder="单号、异常情况或交接说明" placeholder-style="color:#94a3b8" cursor-color="#2563eb" bindinput="changeNotes" />
+      <view class="photo-button" bindtap="chooseFiles"><text class="camera">＋</text><text class="photo-title">拍照 / 选择照片</text><text class="photo-help">可一次选择最多 9 张，文字清晰、四角完整</text></view>
+      <view wx:if="{{files.length}}" class="photo-grid"><view wx:for="{{files}}" wx:key="path" class="photo-wrap"><image src="{{item.path}}" mode="aspectFill" class="photo" /><button class="remove" data-index="{{index}}" bindtap="removeFile">×</button></view></view>
+      <button class="submit" disabled="{{!files.length || uploading}}" bindtap="upload">{{uploading ? '正在上传…' : '确认上传给管理员'}}</button>
+    </view>
+  </block>
+</view>

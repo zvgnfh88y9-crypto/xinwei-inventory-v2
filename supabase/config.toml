@@ -1,0 +1,5 @@
+project_id = "oatkrwhniidjharkautu"
+
+[functions.wechat-auth]
+verify_jwt = false
+

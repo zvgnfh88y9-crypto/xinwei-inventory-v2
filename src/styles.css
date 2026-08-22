@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Color tokens from DESIGN.md */
+  --color-primary: #2563eb;
+  --color-accent: #f97316;
+  --color-bg-main: #f8fafc;
+  --color-surface: #ffffff;
+  --color-text-base: #1e293b;
+  --color-text-muted: #64748b;
+  --color-border: #e2e8f0;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+
+  /* Spacing & Sizing */
+  --radius-card: 0.5rem;
+  --radius-pill: 9999px;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--color-bg-main)] text-[var(--color-text-base)] antialiased;
+    font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[var(--radius-card)] shadow-[var(--shadow-sm)];
+  }
+
+  .btn-primary {
+    @apply bg-[var(--color-primary)] text-white px-4 py-2 rounded-[var(--radius-card)] hover:bg-blue-700 transition-colors duration-200 disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply bg-white border border-[var(--color-border)] text-[var(--color-text-base)] px-4 py-2 rounded-[var(--radius-card)] hover:bg-gray-50 transition-colors duration-200;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2 border border-[var(--color-border)] rounded-[var(--radius-card)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent;
+  }
+  
+  .watermark-bg {
+    background-image: url('/assets/images/watermark-pattern.png');
+    background-repeat: repeat;
+    opacity: 0.03;
+  }
+}

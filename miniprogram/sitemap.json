@@ -1,0 +1,2 @@
+{ "rules": [{ "action": "disallow", "page": "*" }] }
+

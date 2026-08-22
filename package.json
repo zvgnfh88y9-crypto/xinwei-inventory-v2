@@ -1,0 +1,38 @@
+{
+  "name": "accio-react-vite-base",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "preflight": "node scripts/preflight-stage2.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.45.4",
+    "@vitejs/plugin-react": "4.3.4",
+    "autoprefixer": "10.4.20",
+    "jszip": "^3.10.1",
+    "lucide-react": "0.469.0",
+    "postcss": "8.4.49",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.28.0",
+    "tailwindcss": "3.4.17",
+    "tesseract.js": "^5.1.1",
+    "vite": "5.4.11",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@rollup/wasm-node": "4.24.4"
+  },
+  "overrides": {
+    "rollup": "npm:@rollup/wasm-node@4.24.4"
+  },
+  "pnpm": {
+    "overrides": {
+      "rollup": "npm:@rollup/wasm-node@4.24.4"
+    }
+  }
+}
