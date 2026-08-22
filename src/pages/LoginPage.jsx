@@ -187,7 +187,7 @@ const LoginPage = ({ onLogin, passwordRecovery = false, forcePasswordChange = fa
             <div className="inline-flex items-center justify-center bg-white p-3 rounded-2xl mb-4 shadow-lg">
               <img src="/assets/images/logo-xw.png" alt="Xin Wei Logo" className="h-10 w-auto" />
             </div>
-            <h1 className="text-2xl font-bold text-white mb-1">鑫威库存管理系统</h1>
+            <h1 className="text-2xl font-bold text-white mb-1">鑫威库存管理系统 V2</h1>
             <p className="text-blue-100 text-sm">中山鑫威织造有限公司 · 企业级管理平台</p>
           </div>
 
