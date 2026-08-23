@@ -42,6 +42,18 @@ const ProductionPage = ({ user }) => {
       setOrders(currentOrders);
       setProducts(currentProducts);
       setSalesOrders(currentSales);
+      
+      // 容错处理：如果新版产品库 (V2) 为空，尝试从 V1 库存中获取备选产品
+      if (currentProducts.length === 0) {
+        const fallback = await listInventory();
+        const fallbackProducts = (fallback.products || fallback || []).map(p => ({
+          sku_code: p.sku || p.sku_code,
+          name: p.name,
+          available_stock: p.available_stock || 0,
+          base_unit: p.unit || '件'
+        }));
+        if (fallbackProducts.length > 0) setProducts(fallbackProducts);
+      }
 
       // 如果带了参数，自动打开弹窗并选中对应的销售行
       const fromLineId = searchParams.get('create_from_line');
