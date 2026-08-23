@@ -515,8 +515,13 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'list_products') {
-    const { data, error } = await db.from('v2_product_main').select('*').order('created_at', { ascending: false }).limit(1000);
-    if (error) return res({ error: error.message }, 500);
+    // 聚合查询：获取产品基础信息 + 实时可用库存总和
+    const { data, error } = await db.rpc('v2_get_products_with_stock');
+    if (error) {
+        // Fallback: 如果 RPC 尚未部署，先回退到基础查询
+        const basic = await db.from('v2_product_main').select('*').order('created_at', { ascending: false }).limit(1000);
+        return basic.error ? res({ error: basic.error.message }, 500) : res({ products: basic.data || [] });
+    }
     return res({ products: data || [] });
   }
 
