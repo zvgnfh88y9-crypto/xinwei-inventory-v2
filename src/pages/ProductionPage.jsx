@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import SectionHeading from '../components/common/SectionHeading';
 import {
   listProductionOrders,
@@ -10,7 +10,6 @@ import {
   completeProduction
 } from '../lib/wmsV2Api';
 import { Factory, Plus, Play, CheckCircle2, AlertTriangle, Loader2, ListTree, X, Link2, Info, Boxes, PackageSearch, Activity, ShieldCheck, ArrowRight, TrendingUp, BarChart3, Search, AlertCircle } from 'lucide-react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const number = (value) => Number(value || 0);
 const openProductionQty = (line) => (line.v2_production_orders || []).reduce((sum, item) => {
