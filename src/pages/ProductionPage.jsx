@@ -31,25 +31,57 @@ const ProductionPage = ({ user }) => {
   const load = async () => {
     setLoading(true);
     try {
-      const [productionResult, productResult, salesResult] = await Promise.all([
+      const [productionResult, productResult, salesResult, v1Inventory] = await Promise.all([
         listProductionOrders().catch(() => ({ orders: [] })),
         listProductsMain().catch(() => ({ products: [] })),
-        listSalesOrders().catch(() => ({ orders: [] }))
+        listSalesOrders().catch(() => ({ orders: [] })),
+        listInventory().catch(() => [])
       ]);
 
       const currentOrders = productionResult?.orders || productionResult || [];
       const currentSales = salesResult?.orders || salesResult || [];
-      let currentProducts = productResult?.products || productResult || [];
+      
+      // --- 核心：多源数据深度合并逻辑 ---
+      const v2Products = productResult?.products || productResult || [];
+      const v1Products = v1Inventory?.products || v1Inventory || [];
+      
+      const productMap = new Map();
+      
+      // 1. 先载入旧表数据（作为基础）
+      v1Products.forEach(p => {
+        const sku = p.sku || p.sku_code;
+        if (sku) productMap.set(sku, {
+          sku_code: sku,
+          name: p.name || '未命名产品',
+          available_stock: number(p.available_stock),
+          base_unit: p.unit || '件',
+          spec: p.spec || '',
+          category: p.category || ''
+        });
+      });
+      
+      // 2. 用新表数据覆盖/补充（新表字段更全）
+      v2Products.forEach(p => {
+        const sku = p.sku_code || p.sku;
+        if (!sku) return;
+        const existing = productMap.get(sku) || {};
+        productMap.set(sku, {
+          ...existing,
+          sku_code: sku,
+          name: p.name || p.formal_name || existing.name || '未命名产品',
+          available_stock: p.available_stock !== undefined ? number(p.available_stock) : existing.available_stock,
+          base_unit: p.base_unit || p.unit || existing.base_unit,
+          spec: p.spec || existing.spec,
+          category: p.primary_category || p.category || existing.category,
+          image_path: p.image_path || existing.image_path
+        });
+      });
 
-      // 极致容错：如果 V2 产品列表确实为空，立即同步抓取 V1
-      if (currentProducts.length === 0) {
-        const v1Data = await listInventory().catch(() => []);
-        currentProducts = v1Data.products || v1Data || [];
-      }
-
+      const mergedProducts = Array.from(productMap.values()).sort((a, b) => a.sku_code.localeCompare(b.sku_code));
+      
       setOrders(Array.isArray(currentOrders) ? currentOrders : []);
       setSalesOrders(Array.isArray(currentSales) ? currentSales : []);
-      setProducts(Array.isArray(currentProducts) ? currentProducts : []);
+      setProducts(mergedProducts);
 
       // 处理参数跳转
       const fromLineId = searchParams.get('create_from_line');
@@ -74,7 +106,7 @@ const ProductionPage = ({ user }) => {
         setSearchParams({}, { replace: true });
       }
     } catch (e) {
-      console.error('Data load error:', e);
+      console.error('Production Page Load Error:', e);
     } finally {
       setLoading(false);
     }
@@ -296,7 +328,7 @@ const ProductionPage = ({ user }) => {
                     <label className="block"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">目标产品 SKU</span>
                       <select className="input-field mt-2 bg-gray-50 border-transparent focus:bg-white transition-all font-bold text-blue-600" value={form.sku_code} onChange={(e) => setForm({ ...form, sku_code: e.target.value })} required disabled={Boolean(form.sales_order_line_id)}>
                         <option value="">{products.length === 0 ? '-- 正在拉取产品列表... --' : '-- 点击选择成品 --'}</option>
-                        {products.map((p, idx) => <option key={idx} value={p.sku_code || p.sku}>{p.sku_code || p.sku} · {p.name}</option>)}
+                        {products.map((p, idx) => <option key={idx} value={p.sku_code}>{p.sku_code} · {p.name}</option>)}
                       </select>
                     </label>
                     
@@ -306,7 +338,7 @@ const ProductionPage = ({ user }) => {
                             <PackageSearch size={20} />
                          </div>
                          <div className="min-w-0">
-                            <p className="text-[10px] font-black text-blue-600 uppercase">{selectedProduct.primary_category || selectedProduct.category || '通用分类'}</p>
+                            <p className="text-[10px] font-black text-blue-600 uppercase">{selectedProduct.category || '通用分类'}</p>
                             <p className="text-xs font-bold text-gray-700 truncate">{selectedProduct.name}</p>
                             <p className="text-[9px] text-gray-400 mt-0.5 truncate">{selectedProduct.spec || '标准规格'}</p>
                          </div>
@@ -335,7 +367,7 @@ const ProductionPage = ({ user }) => {
                   <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr_auto] gap-3">
                     <select className="input-field bg-white border-transparent shadow-sm" value={newBom.sku} onChange={(e) => setNewBom({ ...newBom, sku: e.target.value })}>
                       <option value="">{products.length === 0 ? '-- 正在拉取物料... --' : '-- 选择消耗的原材料 --'}</option>
-                      {products.map((p, idx) => <option key={idx} value={p.sku_code || p.sku}>{p.sku_code || p.sku} · {p.name}</option>)}
+                      {products.map((p, idx) => <option key={idx} value={p.sku_code}>{p.sku_code} · {p.name}</option>)}
                     </select>
                     <div className="relative">
                        <input type="number" min="0" step="0.001" placeholder="本批次计划耗用量" className="input-field bg-white border-transparent shadow-sm pr-10" value={newBom.qty} onChange={(e) => setNewBom({ ...newBom, qty: e.target.value })} />
