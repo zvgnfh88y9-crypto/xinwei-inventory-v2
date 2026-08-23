@@ -9,7 +9,8 @@ import {
   issueMaterials,
   completeProduction
 } from '../lib/wmsV2Api';
-import { Factory, Plus, Play, CheckCircle2, AlertTriangle, Loader2, ListTree, X, Link2 } from 'lucide-react';
+import { Factory, Plus, Play, CheckCircle2, AlertTriangle, Loader2, ListTree, X, Link2, Info, Boxes, PackageSearch, Activity, ShieldCheck, ArrowRight, TrendingUp, BarChart3, Search, AlertCircle } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const number = (value) => Number(value || 0);
 const openProductionQty = (line) => (line.v2_production_orders || []).reduce((sum, item) => {
@@ -19,6 +20,7 @@ const openProductionQty = (line) => (line.v2_production_orders || []).reduce((su
 const unplannedShortage = (line) => Math.max(0, number(line.quantity) - number(line.shipped_qty) - number(line.locked_qty) - openProductionQty(line));
 
 const ProductionPage = ({ user }) => {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
   const [salesOrders, setSalesOrders] = useState([]);
@@ -29,6 +31,8 @@ const ProductionPage = ({ user }) => {
   const [form, setForm] = useState({ sales_order_id: '', sales_order_line_id: '', sku_code: '', plan_qty: '', workshop: '', due_date: '', bom: [] });
   const [newBom, setNewBom] = useState({ sku: '', qty: '' });
   const canManage = ['admin', 'inv_manager'].includes(user.role);
+
+  const selectedProduct = useMemo(() => products.find(p => p.sku_code === form.sku_code), [form.sku_code, products]);
 
   const load = async () => {
     setLoading(true);
@@ -110,15 +114,24 @@ const ProductionPage = ({ user }) => {
       alert('BOM 中相同物料请合并数量');
       return;
     }
+    const product = products.find(p => p.sku_code === newBom.sku);
     setForm({
       ...form,
-      bom: [...form.bom, { ...newBom, qty: number(newBom.qty), unit: products.find((p) => p.sku_code === newBom.sku)?.base_unit || '件' }]
+      bom: [...form.bom, { 
+        ...newBom, 
+        qty: number(newBom.qty), 
+        unit: product?.base_unit || '件',
+        available_stock: product?.available_stock || 0
+      }]
     });
     setNewBom({ sku: '', qty: '' });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.bom.some(item => item.qty > item.available_stock)) {
+       if (!window.confirm('检测到部分原材料库存不足，确认强制下达工单吗？\n下达后可能导致开工领料失败。')) return;
+    }
     setProcessing(true);
     try {
       await createProductionOrder(form, form.bom);
@@ -235,62 +248,153 @@ const ProductionPage = ({ user }) => {
       </div>
 
       {isAdding && canManage && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-3xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[92vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-xl font-bold">下达生产工单</h3>
-                <p className="text-xs text-gray-500 mt-1">优先从销售订单缺口创建，质检合格后系统会自动把成品锁回对应订单。</p>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-4xl p-0 shadow-2xl animate-in zoom-in-95 max-h-[94vh] overflow-hidden flex flex-col">
+            <div className="bg-[var(--color-primary)] p-6 text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl bg-white/20 flex items-center justify-center">
+                  <Factory size={28} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black">下达正式生产工单</h3>
+                  <p className="text-blue-100 text-xs mt-0.5 opacity-80 uppercase tracking-widest font-bold">优先满足销售订单缺口，质检后自动锁定回补</p>
+                </div>
               </div>
-              <button onClick={() => { setIsAdding(false); resetForm(); }} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+              <button onClick={() => { setIsAdding(false); resetForm(); }} className="p-3 hover:bg-white/10 rounded-full transition-colors text-white/70 hover:text-white"><X size={24} /></button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/40">
-                <label className="block">
-                  <span className="text-[10px] font-black text-blue-600 uppercase">关联销售订单缺口（推荐）</span>
-                  <select className="input-field mt-1 bg-white" value={form.sales_order_line_id} onChange={(e) => selectSalesLine(e.target.value)}>
-                    <option value="">-- 计划外生产 / 不关联销售订单 --</option>
-                    {shortageLines.map((line) => <option key={line.id} value={line.id}>{line.order_no} · {line.sku_code} · 待排产 {line.shortage_qty}</option>)}
-                  </select>
-                </label>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <label className="block"><span className="text-[10px] font-bold text-gray-400 uppercase">目标 SKU</span>
-                  <select className="input-field mt-1" value={form.sku_code} onChange={(e) => setForm({ ...form, sku_code: e.target.value })} required disabled={Boolean(form.sales_order_line_id)}>
-                    <option value="">-- 选择成品 --</option>
-                    {products.map((p) => <option key={p.sku_code} value={p.sku_code}>{p.sku_code} · {p.formal_name}</option>)}
-                  </select>
-                </label>
-                <label className="block"><span className="text-[10px] font-bold text-gray-400 uppercase">计划生产数量</span><input type="number" min="0" step="0.001" className="input-field mt-1" value={form.plan_qty} onChange={(e) => setForm({ ...form, plan_qty: e.target.value })} required /></label>
-                <label className="block"><span className="text-[10px] font-bold text-gray-400 uppercase">指定车间</span><input className="input-field mt-1" value={form.workshop} onChange={(e) => setForm({ ...form, workshop: e.target.value })} /></label>
-                <label className="block"><span className="text-[10px] font-bold text-gray-400 uppercase">计划完成日</span><input type="date" className="input-field mt-1" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} /></label>
-              </div>
-
-              <div className="p-4 bg-gray-50 rounded-xl space-y-4">
-                <div className="flex items-center justify-between"><p className="text-xs font-black text-gray-400 uppercase tracking-widest">BOM 定额配料表</p><span className="text-[10px] text-amber-600 font-bold flex items-center gap-1"><AlertTriangle size={10} /> 开工后扣减可用库存并转入 WIP</span></div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  <select className="input-field" value={newBom.sku} onChange={(e) => setNewBom({ ...newBom, sku: e.target.value })}>
-                    <option value="">-- 选择原材料 --</option>
-                    {products.map((p) => <option key={p.sku_code} value={p.sku_code}>{p.sku_code} · {p.formal_name}</option>)}
-                  </select>
-                  <input type="number" min="0" step="0.001" placeholder="本工单计划耗用量" className="input-field" value={newBom.qty} onChange={(e) => setNewBom({ ...newBom, qty: e.target.value })} />
-                  <button type="button" onClick={addBom} className="btn-secondary h-10 flex items-center justify-center gap-2"><Plus size={16} /> 添加物料</button>
+            <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto p-6 space-y-6">
+              {/* 第一部分：计划决策层 */}
+              <section className="space-y-4">
+                <div className="flex items-center gap-2 px-1">
+                   <div className="w-1 h-4 bg-blue-600 rounded-full" />
+                   <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest">第一步：确认生产目标与来源</h4>
                 </div>
-                <div className="divide-y bg-white rounded-lg border">
-                  {form.bom.map((item, index) => (
-                    <div key={`${item.sku}-${index}`} className="p-3 flex justify-between items-center text-xs">
-                      <span className="font-bold">{item.sku}</span>
-                      <div className="flex items-center gap-4">
-                        <span className="font-black text-indigo-600">{number(item.qty).toLocaleString()} {item.unit}</span>
-                        <button type="button" className="text-red-500" onClick={() => setForm({ ...form, bom: form.bom.filter((_, i) => i !== index) })}>删除</button>
+                
+                <div className="p-4 rounded-2xl border border-blue-100 bg-blue-50/30">
+                  <label className="block">
+                    <span className="text-[10px] font-black text-blue-600 uppercase flex items-center gap-1.5"><Link2 size={12} /> 关联销售订单缺口（强烈推荐）</span>
+                    <select className="input-field mt-2 bg-white border-blue-100 focus:ring-blue-200" value={form.sales_order_line_id} onChange={(e) => selectSalesLine(e.target.value)}>
+                      <option value="">-- 计划外生产 / 不关联销售订单 --</option>
+                      {shortageLines.map((line) => <option key={line.id} value={line.id}>{line.order_no} · {line.sku_code} · 待排产 {line.shortage_qty}</option>)}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                  <div className="md:col-span-5">
+                    <label className="block"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">目标产品 SKU</span>
+                      <select className="input-field mt-2 bg-gray-50 border-transparent focus:bg-white transition-all font-bold text-blue-600" value={form.sku_code} onChange={(e) => setForm({ ...form, sku_code: e.target.value })} required disabled={Boolean(form.sales_order_line_id)}>
+                        <option value="">-- 点击选择成品 --</option>
+                        {products.map((p) => <option key={p.sku_code} value={p.sku_code}>{p.sku_code} · {p.formal_name || p.name}</option>)}
+                      </select>
+                    </label>
+                    
+                    {selectedProduct && (
+                      <div className="mt-3 p-3 rounded-xl border border-dashed border-gray-200 flex gap-3 animate-in fade-in slide-in-from-top-2">
+                         <div className="h-14 w-14 rounded-lg bg-gray-50 flex items-center justify-center border shrink-0 overflow-hidden">
+                            {selectedProduct.image_path ? <img src={selectedProduct.image || ''} className="w-full h-full object-contain" /> : <PackageSearch size={20} className="text-gray-300" />}
+                         </div>
+                         <div className="min-w-0">
+                            <p className="text-[10px] font-black text-blue-600 uppercase">{selectedProduct.primary_category || '未分类'}</p>
+                            <p className="text-xs font-bold text-gray-700 truncate">{selectedProduct.name}</p>
+                            <p className="text-[9px] text-gray-400 mt-0.5 truncate">{selectedProduct.spec || '无规格说明'}</p>
+                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                    )}
+                  </div>
 
-              <button type="submit" disabled={processing} className="w-full btn-primary py-4 flex items-center justify-center gap-2 shadow-xl shadow-blue-100">确认下达工单并进入待产队列</button>
+                  <div className="md:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <label className="block"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">计划生产数量</span><input type="number" min="0" step="0.001" className="input-field mt-2 font-black text-lg text-emerald-700" value={form.plan_qty} onChange={(e) => setForm({ ...form, plan_qty: e.target.value })} required /></label>
+                    <label className="block"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">生产车间/机台</span><input className="input-field mt-2 font-bold" value={form.workshop} onChange={(e) => setForm({ ...form, workshop: e.target.value })} placeholder="如：一号车间" /></label>
+                    <label className="block"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">预计完工日</span><input type="date" className="input-field mt-2 font-bold" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} /></label>
+                  </div>
+                </div>
+              </section>
+
+              {/* 第二部分：物料资源层 */}
+              <section className="space-y-4">
+                <div className="flex items-center justify-between px-1">
+                   <div className="flex items-center gap-2">
+                     <div className="w-1 h-4 bg-indigo-600 rounded-full" />
+                     <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest">第二步：配置 BOM 定额配料 (齐套性检查)</h4>
+                   </div>
+                   <span className="text-[9px] text-amber-600 font-bold flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-full"><AlertCircle size={10} /> 确认开工后将立即预扣可用库存</span>
+                </div>
+
+                <div className="p-5 bg-gray-50 rounded-2xl space-y-4 border border-gray-100">
+                  <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr_auto] gap-3">
+                    <select className="input-field bg-white border-transparent shadow-sm" value={newBom.sku} onChange={(e) => setNewBom({ ...newBom, sku: e.target.value })}>
+                      <option value="">-- 选择消耗的原材料 --</option>
+                      {products.map((p) => <option key={p.sku_code} value={p.sku_code}>{p.sku_code} · {p.name}</option>)}
+                    </select>
+                    <div className="relative">
+                       <input type="number" min="0" step="0.001" placeholder="本批次计划耗用量" className="input-field bg-white border-transparent shadow-sm pr-10" value={newBom.qty} onChange={(e) => setNewBom({ ...newBom, qty: e.target.value })} />
+                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400 uppercase">Qty</span>
+                    </div>
+                    <button type="button" onClick={addBom} className="btn-secondary h-10 px-6 flex items-center justify-center gap-2 bg-white hover:bg-indigo-50 hover:text-indigo-600 transition-all border-none shadow-sm font-black text-xs"><Plus size={16} /> 加入配料表</button>
+                  </div>
+
+                  <div className="rounded-xl overflow-hidden border border-gray-100 bg-white">
+                    {form.bom.length === 0 ? (
+                       <div className="p-10 text-center flex flex-col items-center gap-2">
+                          <Boxes size={32} className="text-gray-200" />
+                          <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">尚未添加任何配料明细</p>
+                       </div>
+                    ) : (
+                      <table className="w-full text-xs text-left">
+                         <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase">
+                            <tr>
+                               <th className="px-4 py-3">物料 SKU</th>
+                               <th className="px-4 py-3 text-right">计划用量</th>
+                               <th className="px-4 py-3 text-right">当前可用库存</th>
+                               <th className="px-4 py-3 text-center">齐套状态</th>
+                               <th className="px-4 py-3 w-16"></th>
+                            </tr>
+                         </thead>
+                         <tbody className="divide-y">
+                            {form.bom.map((item, index) => {
+                               const isShortage = item.qty > item.available_stock;
+                               return (
+                                <tr key={`${item.sku}-${index}`} className="hover:bg-blue-50/30 transition-colors">
+                                  <td className="px-4 py-4 font-bold text-gray-700">{item.sku}</td>
+                                  <td className="px-4 py-4 text-right font-black text-indigo-600">{number(item.qty).toLocaleString()} {item.unit}</td>
+                                  <td className="px-4 py-4 text-right font-black text-gray-400">{number(item.available_stock).toLocaleString()} {item.unit}</td>
+                                  <td className="px-4 py-4 text-center">
+                                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${isShortage ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                        {isShortage ? <AlertTriangle size={10} /> : <CheckCircle2 size={10} />}
+                                        {isShortage ? `缺料 ${(item.qty - item.available_stock).toLocaleString()}` : '库存充足'}
+                                     </span>
+                                  </td>
+                                  <td className="px-4 py-4 text-right">
+                                    <button type="button" className="text-red-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50 transition-colors" onClick={() => setForm({ ...form, bom: form.bom.filter((_, i) => i !== index) })}><Trash2 size={14} /></button>
+                                  </td>
+                                </tr>
+                               );
+                            })}
+                         </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <div className="pt-4 flex flex-col md:flex-row items-center justify-between gap-6 border-t shrink-0">
+                  <div className="flex items-center gap-3">
+                     <div className="h-10 w-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                        <ShieldCheck size={24} />
+                     </div>
+                     <div className="text-[10px] text-gray-500 leading-relaxed max-w-sm font-medium">
+                        <p className="font-black text-gray-700 uppercase tracking-tighter">MES 生产执行指令说明：</p>
+                        <p>工单下达后将进入“待产”队列。此时不会锁定库存。实际原材料将在质检员或组长点击“领料开工”时正式从仓库扣减并转入车间 WIP 在制品状态。</p>
+                     </div>
+                  </div>
+                  
+                  <button type="submit" disabled={processing || loading} className="btn-primary w-full md:w-auto px-16 py-4 flex items-center justify-center gap-3 shadow-2xl shadow-blue-500/20 text-lg group rounded-2xl">
+                     {processing ? <Loader2 size={24} className="animate-spin" /> : <ClipboardCheck size={24} className="group-hover:scale-110 transition-transform" />}
+                     确认下达工单
+                  </button>
+              </div>
             </form>
           </div>
         </div>
