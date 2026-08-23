@@ -9,6 +9,7 @@ import {
   issueMaterials,
   completeProduction
 } from '../lib/wmsV2Api';
+import { listInventory } from '../lib/inventoryApi';
 import { Factory, Plus, Play, CheckCircle2, AlertTriangle, Loader2, ListTree, X, Link2, Info, Boxes, PackageSearch, ShieldCheck, ClipboardCheck, AlertCircle, Trash2 } from 'lucide-react';
 
 const number = (value) => Number(value || 0);
@@ -25,37 +26,32 @@ const ProductionPage = ({ user }) => {
   const [newBom, setNewBom] = useState({ sku: '', qty: '' });
   const canManage = ['admin', 'inv_manager'].includes(user.role);
 
-  const selectedProduct = useMemo(() => products.find(p => p.sku_code === form.sku_code), [form.sku_code, products]);
+  const selectedProduct = useMemo(() => products.find(p => (p.sku_code || p.sku) === form.sku_code), [form.sku_code, products]);
 
   const load = async () => {
     setLoading(true);
     try {
       const [productionResult, productResult, salesResult] = await Promise.all([
-        listProductionOrders(),
-        listProductsMain(),
-        listSalesOrders()
+        listProductionOrders().catch(() => ({ orders: [] })),
+        listProductsMain().catch(() => ({ products: [] })),
+        listSalesOrders().catch(() => ({ orders: [] }))
       ]);
-      const currentOrders = productionResult.orders || [];
-      const currentProducts = productResult.products || [];
-      const currentSales = salesResult.orders || [];
-      
-      setOrders(currentOrders);
-      setProducts(currentProducts);
-      setSalesOrders(currentSales);
-      
-      // 容错处理：如果新版产品库 (V2) 为空，尝试从 V1 库存中获取备选产品
+
+      const currentOrders = productionResult?.orders || productionResult || [];
+      const currentSales = salesResult?.orders || salesResult || [];
+      let currentProducts = productResult?.products || productResult || [];
+
+      // 极致容错：如果 V2 产品列表确实为空，立即同步抓取 V1
       if (currentProducts.length === 0) {
-        const fallback = await listInventory();
-        const fallbackProducts = (fallback.products || fallback || []).map(p => ({
-          sku_code: p.sku || p.sku_code,
-          name: p.name,
-          available_stock: p.available_stock || 0,
-          base_unit: p.unit || '件'
-        }));
-        if (fallbackProducts.length > 0) setProducts(fallbackProducts);
+        const v1Data = await listInventory().catch(() => []);
+        currentProducts = v1Data.products || v1Data || [];
       }
 
-      // 如果带了参数，自动打开弹窗并选中对应的销售行
+      setOrders(Array.isArray(currentOrders) ? currentOrders : []);
+      setSalesOrders(Array.isArray(currentSales) ? currentSales : []);
+      setProducts(Array.isArray(currentProducts) ? currentProducts : []);
+
+      // 处理参数跳转
       const fromLineId = searchParams.get('create_from_line');
       if (fromLineId && currentSales.length > 0) {
         const allShortageLines = currentSales.flatMap((order) => (order.v2_sales_order_lines || [])
@@ -78,7 +74,7 @@ const ProductionPage = ({ user }) => {
         setSearchParams({}, { replace: true });
       }
     } catch (e) {
-      console.error(e);
+      console.error('Data load error:', e);
     } finally {
       setLoading(false);
     }
@@ -118,13 +114,13 @@ const ProductionPage = ({ user }) => {
       alert('BOM 中相同物料请合并数量');
       return;
     }
-    const product = products.find(p => p.sku_code === newBom.sku);
+    const product = products.find(p => (p.sku_code || p.sku) === newBom.sku);
     setForm({
       ...form,
       bom: [...form.bom, { 
-        ...newBom, 
+        sku: newBom.sku,
         qty: number(newBom.qty), 
-        unit: product?.base_unit || '件',
+        unit: product?.base_unit || product?.unit || '件',
         available_stock: product?.available_stock || 0
       }]
     });
@@ -299,20 +295,20 @@ const ProductionPage = ({ user }) => {
                   <div className="md:col-span-5">
                     <label className="block"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">目标产品 SKU</span>
                       <select className="input-field mt-2 bg-gray-50 border-transparent focus:bg-white transition-all font-bold text-blue-600" value={form.sku_code} onChange={(e) => setForm({ ...form, sku_code: e.target.value })} required disabled={Boolean(form.sales_order_line_id)}>
-                        <option value="">-- 点击选择成品 --</option>
-                        {products.map((p) => <option key={p.sku_code} value={p.sku_code}>{p.sku_code} · {p.formal_name || p.name}</option>)}
+                        <option value="">{products.length === 0 ? '-- 正在拉取产品列表... --' : '-- 点击选择成品 --'}</option>
+                        {products.map((p, idx) => <option key={idx} value={p.sku_code || p.sku}>{p.sku_code || p.sku} · {p.name}</option>)}
                       </select>
                     </label>
                     
                     {selectedProduct && (
                       <div className="mt-3 p-3 rounded-xl border border-dashed border-gray-200 flex gap-3 animate-in fade-in slide-in-from-top-2">
-                         <div className="h-14 w-14 rounded-lg bg-gray-50 flex items-center justify-center border shrink-0 overflow-hidden">
-                            {selectedProduct.image_path ? <img src={selectedProduct.image || ''} className="w-full h-full object-contain" /> : <PackageSearch size={20} className="text-gray-300" />}
+                         <div className="h-14 w-14 rounded-lg bg-gray-50 flex items-center justify-center border shrink-0 overflow-hidden text-gray-300">
+                            <PackageSearch size={20} />
                          </div>
                          <div className="min-w-0">
-                            <p className="text-[10px] font-black text-blue-600 uppercase">{selectedProduct.primary_category || '未分类'}</p>
+                            <p className="text-[10px] font-black text-blue-600 uppercase">{selectedProduct.primary_category || selectedProduct.category || '通用分类'}</p>
                             <p className="text-xs font-bold text-gray-700 truncate">{selectedProduct.name}</p>
-                            <p className="text-[9px] text-gray-400 mt-0.5 truncate">{selectedProduct.spec || '无规格说明'}</p>
+                            <p className="text-[9px] text-gray-400 mt-0.5 truncate">{selectedProduct.spec || '标准规格'}</p>
                          </div>
                       </div>
                     )}
@@ -338,8 +334,8 @@ const ProductionPage = ({ user }) => {
                 <div className="p-5 bg-gray-50 rounded-2xl space-y-4 border border-gray-100">
                   <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr_auto] gap-3">
                     <select className="input-field bg-white border-transparent shadow-sm" value={newBom.sku} onChange={(e) => setNewBom({ ...newBom, sku: e.target.value })}>
-                      <option value="">-- 选择消耗的原材料 --</option>
-                      {products.map((p) => <option key={p.sku_code} value={p.sku_code}>{p.sku_code} · {p.name}</option>)}
+                      <option value="">{products.length === 0 ? '-- 正在拉取物料... --' : '-- 选择消耗的原材料 --'}</option>
+                      {products.map((p, idx) => <option key={idx} value={p.sku_code || p.sku}>{p.sku_code || p.sku} · {p.name}</option>)}
                     </select>
                     <div className="relative">
                        <input type="number" min="0" step="0.001" placeholder="本批次计划耗用量" className="input-field bg-white border-transparent shadow-sm pr-10" value={newBom.qty} onChange={(e) => setNewBom({ ...newBom, qty: e.target.value })} />
@@ -367,7 +363,7 @@ const ProductionPage = ({ user }) => {
                          </thead>
                          <tbody className="divide-y">
                             {form.bom.map((item, index) => {
-                               const isShortage = item.qty > item.available_stock;
+                               const isShortage = Number(item.qty) > Number(item.available_stock || 0);
                                return (
                                 <tr key={`${item.sku}-${index}`} className="hover:bg-blue-50/30 transition-colors">
                                   <td className="px-4 py-4 font-bold text-gray-700">{item.sku}</td>
@@ -376,7 +372,7 @@ const ProductionPage = ({ user }) => {
                                   <td className="px-4 py-4 text-center">
                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${isShortage ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
                                         {isShortage ? <AlertTriangle size={10} /> : <CheckCircle2 size={10} />}
-                                        {isShortage ? `缺料 ${(item.qty - item.available_stock).toLocaleString()}` : '库存充足'}
+                                        {isShortage ? `缺料 ${(Number(item.qty) - Number(item.available_stock || 0)).toLocaleString()}` : '库存充足'}
                                      </span>
                                   </td>
                                   <td className="px-4 py-4 text-right">
