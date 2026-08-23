@@ -274,5 +274,3 @@ const QualityControlPage = ({ user }) => {
 };
 
 export default QualityControlPage;
-
-export default QualityControlPage;

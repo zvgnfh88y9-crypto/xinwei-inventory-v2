@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import SectionHeading from '../components/common/SectionHeading';
 import {
   listProductionOrders,
@@ -9,17 +9,11 @@ import {
   issueMaterials,
   completeProduction
 } from '../lib/wmsV2Api';
-import { Factory, Plus, Play, CheckCircle2, AlertTriangle, Loader2, ListTree, X, Link2, Info, Boxes, PackageSearch, Activity, ShieldCheck, ArrowRight, TrendingUp, BarChart3, Search, AlertCircle } from 'lucide-react';
+import { Factory, Plus, Play, CheckCircle2, AlertTriangle, Loader2, ListTree, X, Link2, Info, Boxes, PackageSearch, ShieldCheck, ClipboardCheck, AlertCircle, Trash2 } from 'lucide-react';
 
 const number = (value) => Number(value || 0);
-const openProductionQty = (line) => (line.v2_production_orders || []).reduce((sum, item) => {
-  if (!['draft', 'in_progress'].includes(item.status)) return sum;
-  return sum + Math.max(0, number(item.plan_qty) - number(item.actual_qty) - number(item.scrap_qty));
-}, 0);
-const unplannedShortage = (line) => Math.max(0, number(line.quantity) - number(line.shipped_qty) - number(line.locked_qty) - openProductionQty(line));
 
 const ProductionPage = ({ user }) => {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
   const [salesOrders, setSalesOrders] = useState([]);
@@ -69,7 +63,6 @@ const ProductionPage = ({ user }) => {
           });
           setIsAdding(true);
         }
-        // 清理参数，避免刷新页面再次触发
         setSearchParams({}, { replace: true });
       }
     } catch (e) {
@@ -180,6 +173,17 @@ const ProductionPage = ({ user }) => {
     }
   };
 
+  function openProductionQty(line) {
+    return (line.v2_production_orders || []).reduce((sum, item) => {
+        if (!['draft', 'in_progress'].includes(item.status)) return sum;
+        return sum + Math.max(0, number(item.plan_qty) - number(item.actual_qty) - number(item.scrap_qty));
+    }, 0);
+  }
+
+  function unplannedShortage(line) {
+    return Math.max(0, number(line.quantity) - number(line.shipped_qty) - number(line.locked_qty) - openProductionQty(line));
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -263,7 +267,6 @@ const ProductionPage = ({ user }) => {
             </div>
 
             <form onSubmit={handleSubmit} className="flex-grow overflow-y-auto p-6 space-y-6">
-              {/* 第一部分：计划决策层 */}
               <section className="space-y-4">
                 <div className="flex items-center gap-2 px-1">
                    <div className="w-1 h-4 bg-blue-600 rounded-full" />
@@ -311,7 +314,6 @@ const ProductionPage = ({ user }) => {
                 </div>
               </section>
 
-              {/* 第二部分：物料资源层 */}
               <section className="space-y-4">
                 <div className="flex items-center justify-between px-1">
                    <div className="flex items-center gap-2">
