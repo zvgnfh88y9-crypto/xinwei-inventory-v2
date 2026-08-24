@@ -74,30 +74,22 @@ const ProductionPage = ({ user }) => {
       setOrders(Array.isArray(currentOrders) ? currentOrders : []);
       setSalesOrders(Array.isArray(currentSales) ? currentSales : []);
       setProducts(mergedProducts);
-
-      const fromLineId = searchParams.get('create_from_line');
-      if (fromLineId && currentSales.length > 0) {
-        const allShortageLines = currentSales.flatMap((order) => (order.v2_sales_order_lines || [])
-          .map((line) => ({ ...line, sales_order_id: order.id, order_no: order.order_no, due_date: order.due_date, shortage_qty: unplannedShortage(line, currentOrders) }))
-          .filter((line) => line.shortage_qty > 0 && !['cancelled', 'completed'].includes(order.status)));
-        
-        const target = allShortageLines.find(l => l.id === fromLineId);
-        if (target) {
-          setForm({ sales_order_id: target.sales_order_id, sales_order_line_id: target.id, sku_code: target.sku_code, plan_qty: target.shortage_qty, due_date: target.due_date || '', workshop: '', bom: [] });
-          setSkuSearch(target.sku_code);
-          setIsAdding(true);
-        }
-        setSearchParams({}, { replace: true });
-      }
     } catch (e) { console.error('Load Error:', e); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
 
-  const shortageLines = useMemo(() => salesOrders.flatMap((order) => (order.v2_sales_order_lines || [])
-    .map((line) => ({ ...line, sales_order_id: order.id, order_no: order.order_no, due_date: order.due_date, shortage_qty: unplannedShortage(line, orders) }))
-    .filter((line) => line.shortage_qty > 0 && !['cancelled', 'completed'].includes(order.status))), [salesOrders, orders]);
+  const openProductionQty = (line, allOrders) => {
+    return (allOrders || []).filter(o => o.sales_order_line_id === line.id).reduce((sum, item) => {
+        if (!['draft', 'in_progress'].includes(item.status)) return sum;
+        return sum + Math.max(0, number(item.plan_qty) - number(item.actual_qty) - number(item.scrap_qty));
+    }, 0);
+  }
+
+  const unplannedShortage = (line, allOrders) => {
+    return Math.max(0, number(line.quantity) - number(line.shipped_qty) - number(line.locked_qty) - openProductionQty(line, allOrders));
+  }
 
   const handleQuickCreate = async () => {
     if (!skuSearch || !quickCreateForm.name) return alert('请先填写产品编码和名称');
@@ -171,19 +163,12 @@ const ProductionPage = ({ user }) => {
     finally { setProcessing(false); }
   };
 
-  function openProductionQty(line, allOrders) {
-    return (allOrders || []).filter(o => o.sales_order_line_id === line.id).reduce((sum, item) => {
-        if (!['draft', 'in_progress'].includes(item.status)) return sum;
-        return sum + Math.max(0, number(item.plan_qty) - number(item.actual_qty) - number(item.scrap_qty));
-    }, 0);
-  }
-
-  function unplannedShortage(line, allOrders) {
-    return Math.max(0, number(line.quantity) - number(line.shipped_qty) - number(line.locked_qty) - openProductionQty(line, allOrders));
-  }
+  const shortageLines = useMemo(() => salesOrders.flatMap((order) => (order.v2_sales_order_lines || [])
+    .map((line) => ({ ...line, sales_order_id: order.id, order_no: order.order_no, due_date: order.due_date, shortage_qty: unplannedShortage(line, orders) }))
+    .filter((line) => line.shortage_qty > 0 && !['cancelled', 'completed'].includes(order.status))), [salesOrders, orders]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-slate-800">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <SectionHeading title="生产与作业中心" subtitle="销售缺口排产 → BOM 领料 → 在制 → 完工待检 → 质检后自动回补订单" />
         {canManage && <button onClick={() => setIsAdding(true)} className="btn-primary flex items-center justify-center gap-2 px-6 shadow-lg shadow-blue-500/20"><Plus size={18} /> 下达生产工单</button>}
