@@ -102,6 +102,7 @@ export const uploadSourceDocument = async (file, channel) => {
 export const matchSkuAlias = (alias) => invoke('match_sku', { alias });
 export const listInventoryBalances = () => invoke('list_balances');
 export const listProductsMain = () => invoke('list_products');
+export const quickCreateProduct = (params) => invoke('quick_create_product', params);
 export const mergePartner = (oldName, standardName) => invoke('merge_partner', { old_name: oldName, standard_name: standardName });
 
 // Helper to compute SHA-256 hash

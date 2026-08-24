@@ -19,7 +19,7 @@ const STAFF_ACTIONS = new Set([
 const MANAGER_ACTIONS = new Set([
   ...STAFF_ACTIONS,
   'lock_inventory', 'create_production_order', 'issue_materials', 'complete_production',
-  'list_receipts', 'create_inspection', 'ship_sales_order', 'confirm_shipment_delivery', 'list_exceptions'
+  'list_receipts', 'create_inspection', 'ship_sales_order', 'confirm_shipment_delivery', 'list_exceptions', 'merge_partner', 'quick_create_product'
 ]);
 
 const ADMIN_ACTIONS = new Set([
@@ -81,12 +81,7 @@ Deno.serve(async (req) => {
 
   const actorName = profile.display_name || user.email || '';
   const isManager = MANAGER_ROLES.has(profile.role);
-  const canEditSourceDocument = async (id: string) => {
-    const { data, error } = await db.from('v2_source_documents').select('id, uploader_id').eq('id', id).maybeSingle();
-    if (error || !data) return { ok: false, status: 404, error: '原始单据不存在' };
-    if (!isManager && data.uploader_id !== user.id) return { ok: false, status: 403, error: '普通员工只能修改自己上传的原始单据' };
-    return { ok: true, document: data };
-  };
+  
   const logAudit = async (actionType: string, resourceType: string, resourceId: string, detail: string) => {
     const { error } = await db.from('system_audit_log').insert({
       actor_id: user.id,
@@ -97,6 +92,13 @@ Deno.serve(async (req) => {
       detail
     });
     if (error) console.error('[wms-audit]', error.message);
+  };
+
+  const canEditSourceDocument = async (id: string) => {
+    const { data, error } = await db.from('v2_source_documents').select('id, uploader_id').eq('id', id).maybeSingle();
+    if (error || !data) return { ok: false, status: 404, error: '原始单据不存在' };
+    if (!isManager && data.uploader_id !== user.id) return { ok: false, status: 403, error: '普通员工只能修改自己上传的原始单据' };
+    return { ok: true, document: data };
   };
 
   if (action === 'list_source_docs') {
@@ -460,7 +462,6 @@ Deno.serve(async (req) => {
     return res({ chain: data || [] });
   }
 
-  // --- Helper: Simple Fuzzy Matching for Chinese Names ---
   const getSimilarity = (s1: string, s2: string) => {
     const set1 = new Set(s1.split(''));
     const set2 = new Set(s2.split(''));
@@ -483,7 +484,6 @@ Deno.serve(async (req) => {
     const firstError = ocrFailedResult.error || duplicatedResult.error || qcFailedResult.error || tempSkuResult.error || negativeStockResult.error || docsResult.error || partnersResult.error;
     if (firstError) return res({ error: firstError.message }, 500);
 
-    // 计算未知单位与相似匹配
     const knownNames = new Set((partnersResult.data || []).map((p: any) => p.name));
     const allDocPartnerNames = [...new Set((docsResult.data || []).map((d: any) => text(d.partner_name)).filter(n => n && n !== '内部' && !['内部作业', '自动导入'].includes(n)))];
     
@@ -515,10 +515,8 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'list_products') {
-    // 聚合查询：获取产品基础信息 + 实时可用库存总和
     const { data, error } = await db.rpc('v2_get_products_with_stock');
     if (error) {
-        // Fallback: 如果 RPC 尚未部署，先回退到基础查询
         const basic = await db.from('v2_product_main').select('*').order('created_at', { ascending: false }).limit(1000);
         return basic.error ? res({ error: basic.error.message }, 500) : res({ products: basic.data || [] });
     }
@@ -567,7 +565,6 @@ Deno.serve(async (req) => {
     const standardName = text(payload.standard_name);
     if (!oldName || !standardName) return res({ error: '原始名称和标准名称不能为空' }, 400);
 
-    // 1. 确保标准名称在 v2_business_partners 中存在 (若不存在则创建)
     const { data: partner } = await db.from('v2_business_partners').select('id').eq('name', standardName).maybeSingle();
     let partnerId = partner?.id;
     if (!partnerId) {
@@ -579,7 +576,6 @@ Deno.serve(async (req) => {
         partnerId = created.id;
     }
 
-    // 2. 批量更新 inventory_documents 中的 partner_name
     const { error: updateError } = await db.from('inventory_documents')
         .update({ partner_name: standardName })
         .eq('partner_name', oldName);
@@ -590,6 +586,31 @@ Deno.serve(async (req) => {
     return res({ ok: true });
   }
 
-  // 注意：run_migration / reset_system_passwords 已在第一阶段安全整改中永久移除。
+  if (action === 'quick_create_product') {
+    const skuCode = text(payload.sku_code);
+    const name = text(payload.name);
+    if (!skuCode || !name) return res({ error: '产品编码和名称不能为空' }, 400);
+
+    const { data, error } = await db.from('v2_product_main').insert({
+        sku_code: skuCode,
+        name: name,
+        formal_name: name,
+        primary_category: text(payload.category, '生产成品'),
+        base_unit: text(payload.unit, '条')
+    }).select('*').single();
+
+    if (error) return res({ error: '快速创建失败: ' + error.message }, 400);
+    
+    await db.from('inventory_products').insert({
+        sku: skuCode,
+        name: name,
+        category: text(payload.category, '生产成品'),
+        unit: text(payload.unit, '条')
+    }).select('sku').maybeSingle();
+
+    await logAudit('quick_create', 'product', skuCode, `在生产下单时快速创建新产品：${name}`);
+    return res({ product: data });
+  }
+
   return res({ error: `Unsupported action: ${action}` }, 400);
 });
