@@ -126,7 +126,8 @@ const QualityControlPage = ({ user }) => {
                 <p className="text-[10px] text-gray-300 mt-1">所有批次均已完成入库处理</p>
             </div>
           ) : pendingReceipts.map(r => {
-            const isProduction = r.v2_warehouse_receipt_lines?.some(l => l.production_id);
+            // 通过单号前缀或 batch_no 识别生产完工
+            const isProduction = r.receipt_no?.startsWith('PR-') || r.v2_warehouse_receipt_lines?.some(l => l.batch_no && l.batch_no.length > 20); 
             return (
               <div key={r.id} className="card p-0 overflow-hidden group hover:border-blue-200 transition-all">
                 <div className="flex flex-col md:flex-row items-stretch">
